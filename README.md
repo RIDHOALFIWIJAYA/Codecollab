@@ -1,50 +1,62 @@
 # CodeCollab
 
-Editor kode real-time untuk tim kecil. Kolaborasi maksimal 5 orang per room, dengan sinkronisasi teks berbasis CRDT, chat room, dan eksekusi kode langsung dari editor.
+CodeCollab is a small real-time collaborative code editor. Its purpose is to let multiple people work on the same code in one room, discuss it through chat, and see the result of a run together.
 
-## Fitur
+It can be used for pair programming, teaching, group practice, or quick coding demos.
 
-- Kolaborasi real-time dengan Yjs (CRDT) + binding Monaco (`y-monaco`).
-- Maksimal 5 user per room. User ke-6 ditolak dengan notifikasi room penuh.
-- Kursor dan nama user muncul di editor (awareness).
-- Chat room dengan daftar anggota online.
-- Ganti bahasa pemrograman dan tema gelap/terang.
-- Eksekusi kode (tombol Run) dengan output disiarkan ke semua user di room.
-- Preview HTML/CSS live di panel Preview.
-- Ekspor/download kode sesuai ekstensi bahasa.
-- Responsif untuk layar kecil.
+> **Security warning:** The server runs JavaScript, TypeScript, and Python with the host process's permissions. The project has no authentication or code sandbox, so do not expose it to untrusted users.
 
-## Teknologi
+## What CodeCollab does
 
-- Frontend: React 18 + Vite, Tailwind CSS, Monaco Editor, lucide-react.
-- Sinkronisasi: Yjs, y-websocket, y-monaco.
-- Backend: Node.js, Express, Socket.IO, ws.
-- Eksekusi kode: child_process server-side (Node, Python, TypeScript via transpile) dan iframe sandbox client-side (HTML/CSS).
+- Create a room or join an existing room with a room code.
+- Synchronize one shared code buffer in real time.
+- Show online room members.
+- Send chat messages to everyone in the room.
+- Choose a shared language: JavaScript, TypeScript, Python, HTML, or CSS.
+- Run JavaScript, TypeScript, and Python on the server.
+- Preview HTML and CSS in the browser.
+- Show the latest run output to everyone in the room.
+- Download the current code from the editor.
 
-## Struktur folder
+The client is built with React and Vite. The server uses Node.js, Express, Socket.IO, and Yjs. Chat and run events use Socket.IO, while the shared editor document uses a Yjs WebSocket.
+
+## Requirements
+
+- Node.js `18` or newer.
+- npm.
+- Python 3 if you want to run Python code.
+- ngrok if you want to open the project from another device or browser outside your local network.
+
+The repository contains two applications:
 
 ```text
-client/                  # React (Vite) + Tailwind
-  src/
-    components/          # JoinScreen, RoomHeader, CodeEditor, ChatPanel, FullRoomModal, RunConsole
-    hooks/useYjsSocket.js# Hook manajemen Socket.IO, Yjs, dan state run
-    utils/               # constants (bahasa, warna), downloadHelper, format
-server/
-  server.js              # Express + Socket.IO + y-websocket (WS /ws)
-  codeRunner.js          # Eksekusi kode server-side (Node/Python/TS)
+client/   React and Vite frontend
+server/   Node.js, Express, Socket.IO, and Yjs backend
 ```
 
-## Menjalankan lokal
+## Run the project locally
 
-Server (port default 3001):
+Open two terminals from the project root.
+
+### 1. Start the server
+
+In the first terminal:
 
 ```bash
 cd server
 npm install
-node server.js
+npm run dev
 ```
 
-Client (dev server Vite di port 5173):
+The server runs at:
+
+```text
+http://localhost:3001
+```
+
+### 2. Start the client
+
+In the second terminal:
 
 ```bash
 cd client
@@ -52,55 +64,50 @@ npm install
 npm run dev
 ```
 
-Buka `http://localhost:5173`, buat room, lalu bagikan kode room atau link undangan ke rekan.
+Open this URL in your browser:
 
-## Fitur eksekusi kode
+```text
+http://localhost:5173
+```
 
-Bahasa yang bisa di-run:
+Create a room, then enter the same room code in another browser to collaborate.
 
-- JavaScript: dieksekusi dengan Node di server, hasilnya disiarkan ke semua anggota room.
-- TypeScript: ditranspile lalu dijalankan dengan Node.
-- Python: dieksekusi dengan Python di server.
-- HTML/CSS: tampil sebagai Preview di iframe sandbox, ter-update saat mengetik.
+## Run everything on one port
 
-Pengamanan yang aktif:
+Build the client first, then start the server. The server can serve the generated `client/dist` folder.
 
-- Timeout eksekusi 5 detik dengan kill (proses loop tak berujung dihentikan).
-- Batas output 64 KB.
-- Cooldown: satu eksekusi per user dengan jeda minimal 1,5 detik, dan satu eksekusi berjalan per user bersamaan (guard busy).
-- Bahasa di luar daftar (JS, TS, Python) ditolak server dengan alasan `unsupported`.
+```bash
+cd client
+npm install
+npm run build
 
-Catatan pemutusan kebutuhan: eksekusi berjalan di komputer/host server tanpa sandbox container. Ini wajar untuk demo dan penggunaan lokal, tapi perlu pengamanan tambahan sebelum dipakai publik (lihat Keamanan).
+cd ../server
+npm install
+npm start
+```
 
-## Deploy ke Render (gratis) + GitHub
+Open `http://localhost:3001` after the server starts. Make sure the client build finishes before starting the server.
 
-Prinsip: Vercel/Netlify tidak dipakai karena fitur butuh koneksi WebSocket yang tahan lama. Render (atau VPS lain) bisa.
+## Optional: expose it with ngrok
 
-1. Push kode ke GitHub (private dulu tidak masalah).
-2. Di dashboard Render, buat Web Service baru, hubungkan repo GitHub, pilih branch `main`.
-3. Isi konfigurasi:
+For a development server on port `5173`:
 
-   - Runtime: Node
-   - Root Directory: `server`
-   - Build Command: `npm install && (cd ../client && npm install && npm run build)`
-   - Start Command: `node server.js`
-   - Health Check Path: `/api/health`
-   - Plan: Free
+```bash
+ngrok http 5173
+```
 
-4. Deploy. URL jadi `https://nama-app.onrender.com`. Server otomatis melayani frontend hasil build di `client/dist` dan semua endpoint (REST, Socket.IO, WebSocket `/ws`) dari satu port.
+For a built application served by the backend on port `3001`:
 
-Catatan free tier:
+```bash
+ngrok http 3001
+```
 
-- Instance menganggur setelah 15 menit tanpa traffic lalu cold start sekitar 1 menit saat ada permintaan baru. Selama ada koneksi/chat aktif, instance tetap hidup.
-- Resource 0,1 CPU / 512 MB di free tier, jadi eksekusi kode lebih pelan daripada lokal.
-- Data room dan chat disimpan di memori, hilang saat restart atau spin-down.
+Use the URL printed by ngrok. Stop the tunnel when you are finished.
 
-## Keamanan (sebelum dipakai publik)
+## Important notes
 
-- Tambahkan batas proses global (contoh: maksimal 2 eksekusi kode bersamaan di seluruh server) di `codeRunner.js`, di samping guard per-user yang sudah ada.
-- Pertimbangkan jalankan di dalam container dengan limit CPU/memori (Docker + cgroup), karena `child_process` menjalankan kode user di host.
-- Rate-limit per IP pada endpoint HTTP bila ditambahkan endpoint baru.
-
-## Lisensi
-
-Belum ditentukan. Sesuaikan sebelum distribusi publik.
+- Room data is stored in memory and is lost when the server restarts.
+- The application has no login, database, or permanent room history.
+- TypeScript is transpiled but is not type-checked.
+- Python must be installed on the machine running the server.
+- The server currently supports a normal limit of five UI clients per room.

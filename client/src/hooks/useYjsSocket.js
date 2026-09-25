@@ -23,6 +23,7 @@ export function useYjsSocket() {
   const [messages, setMessages] = useState([])
   const [roomFull, setRoomFull] = useState(false)
   const [socketError, setSocketError] = useState('')
+  const [syncStatus, setSyncStatus] = useState('idle')
   const [language, setLanguage] = useState(DEFAULT_LANGUAGE)
   const [run, setRun] = useState(null)
 
@@ -56,20 +57,16 @@ export function useYjsSocket() {
 
   const teardown = useCallback(() => {
     const provider = providerRef.current
-    if (provider) {
-      provider.destroy()
-      providerRef.current = null
-    }
+    providerRef.current = null
+    if (provider) provider.destroy()
     const doc = docRef.current
-    if (doc) {
-      doc.destroy()
-      docRef.current = null
-    }
+    docRef.current = null
+    if (doc) doc.destroy()
     const socket = socketRef.current
+    socketRef.current = null
     if (socket) {
       socket.removeAllListeners()
       socket.disconnect(true)
-      socketRef.current = null
     }
     textRef.current = null
     statusRef.current = 'idle'
@@ -78,6 +75,7 @@ export function useYjsSocket() {
     setStatus('idle')
     setRoomFull(false)
     setSocketError('')
+    setSyncStatus('idle')
     setLanguage(DEFAULT_LANGUAGE)
     clearMessages()
   }, [clearMessages])
@@ -101,6 +99,7 @@ export function useYjsSocket() {
       setName(cleanName)
       statusRef.current = 'connecting'
       setStatus('connecting')
+      setSyncStatus('connecting')
       setSocketError('')
       clearMessages()
 
@@ -119,6 +118,7 @@ export function useYjsSocket() {
               }
               statusRef.current = 'idle'
               setStatus('idle')
+              setSyncStatus('idle')
               socket.disconnect(true)
               return
             }
@@ -129,10 +129,14 @@ export function useYjsSocket() {
             }
 
             const existing = providerRef.current
-            if (existing && existing.ws) return
+            if (existing && existing.ws) {
+              statusRef.current = 'connected'
+              setStatus('connected')
+              return
+            }
             if (existing) {
-              existing.destroy()
               providerRef.current = null
+              existing.destroy()
             }
 
             appendMessage({
@@ -148,7 +152,31 @@ export function useYjsSocket() {
               text.insert(0, languageById('javascript').snippet)
             }
 
-            const provider = new WebsocketProvider('/ws', nextRoomId, doc)
+            const provider = new WebsocketProvider('/ws', nextRoomId, doc, {
+              connect: false,
+            })
+            provider.on('status', ({ status: providerStatus } = {}) => {
+              if (!mountedRef.current || providerRef.current !== provider) return
+              if (providerStatus === 'connected') setSyncStatus('syncing')
+              if (providerStatus === 'disconnected') setSyncStatus('reconnecting')
+            })
+            provider.on('sync', (synced) => {
+              if (!mountedRef.current || providerRef.current !== provider) return
+              if (synced) {
+                setSyncStatus('synced')
+                setSocketError('')
+              }
+            })
+            provider.on('connection-error', () => {
+              if (!mountedRef.current || providerRef.current !== provider) return
+              setSyncStatus('error')
+              setSocketError('Koneksi sinkronisasi kode gagal. Coba muat ulang halaman.')
+            })
+            provider.on('connection-close', () => {
+              if (!mountedRef.current || providerRef.current !== provider) return
+              setSyncStatus('reconnecting')
+              setSocketError('Sinkronisasi kode terputus. Mencoba menyambung kembali...')
+            })
             provider.awareness.setLocalStateField('user', {
               name: cleanName,
               color,
@@ -157,6 +185,7 @@ export function useYjsSocket() {
             providerRef.current = provider
             docRef.current = doc
             textRef.current = text
+            provider.connect()
             statusRef.current = 'connected'
             setStatus('connected')
           }
@@ -229,6 +258,7 @@ export function useYjsSocket() {
         if (reason === 'io server disconnect' || reason === 'io client disconnect') return
         statusRef.current = 'idle'
         setStatus('idle')
+        setSyncStatus('reconnecting')
         setSocketError('Koneksi ke server terputus. Coba gabung kembali.')
       })
 
@@ -297,6 +327,7 @@ export function useYjsSocket() {
     messages,
     roomFull,
     socketError,
+    syncStatus,
     language,
     run,
     maxUsers: ROOM_MAX,

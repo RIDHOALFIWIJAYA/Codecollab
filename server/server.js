@@ -194,18 +194,28 @@ io.on('connection', (socket) => {
 
 const wss = new WebSocketServer({ noServer: true })
 
-server.on('upgrade', (req, socket, head) => {
+function parseYjsRoomPath(req) {
   const urlPath = (req.url || '').split('?')[0]
-  if (urlPath !== '/ws') return
+  if (urlPath === '/ws') return { matched: true, roomId: '' }
+  if (!urlPath.startsWith('/ws/')) return { matched: false, roomId: null }
+
+  try {
+    return { matched: true, roomId: decodeURIComponent(urlPath.slice(4)) }
+  } catch {
+    return { matched: true, roomId: null }
+  }
+}
+
+server.on('upgrade', (req, socket, head) => {
+  const { matched, roomId } = parseYjsRoomPath(req)
+  if (!matched) return
+
   wss.handleUpgrade(req, socket, head, (conn) => {
-    wss.emit('connection', conn, req)
+    wss.emit('connection', conn, req, roomId)
   })
 })
 
-wss.on('connection', (conn, req) => {
-  const urlPath = (req.url || '').split('?')[0]
-  const roomId = decodeURIComponent(urlPath.replace(/^\/ws\/?/, ''))
-
+wss.on('connection', (conn, req, roomId) => {
   if (!isValidRoomId(roomId)) {
     conn.close(4002, 'INVALID_ROOM')
     return
