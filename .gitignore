@@ -3,4 +3,3 @@ client/dist/
 *.log
 .env
 .DS_Store
-.OPENCODE.md
